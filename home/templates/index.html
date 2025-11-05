@@ -310,6 +310,12 @@
             transform: translateY(-1px);
         }
 
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
         .btn-telegram {
             background: linear-gradient(135deg, #0088cc, #006699);
             margin-top: 15px;
@@ -378,6 +384,57 @@
             color: #0088cc;
             font-size: 20px;
             margin-bottom: 8px;
+        }
+
+        .messages {
+            margin-bottom: 25px;
+            animation: slideDown 0.6s ease both;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert {
+            padding: 18px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: 500;
+            margin-bottom: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #86efac;
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .alert-info {
+            background: rgba(6, 182, 212, 0.1);
+            color: #67e8f9;
+            border-color: rgba(6, 182, 212, 0.3);
         }
 
         /* Loading animation */
@@ -496,6 +553,11 @@
                 <p>Premium Test Platformasi</p>
             </div>
 
+            <!-- Messages -->
+            <div class="messages" id="messages">
+                <!-- Messages will be displayed here -->
+            </div>
+
             <!-- Login Form -->
             <form id="loginForm">
                 {% csrf_token %}
@@ -504,12 +566,14 @@
                     <input type="text" class="form-input" name="username" placeholder="Login" required id="usernameInput" value="admin">
                     <i class='bx bx-user input-icon'></i>
                 </div>
+                
                 <div class="form-group">
                     <input type="password" class="form-input" name="password" placeholder="Parol" required id="passwordInput" value="admin123">
                     <i class='bx bx-lock-alt input-icon'></i>
                 </div>
+                
                 <button type="submit" class="btn" id="submitBtn">
-                    <span>Tizimga Kirish</span>
+                    <span id="btnText">Tizimga Kirish</span>
                     <div class="loading-spinner" id="loadingSpinner"></div>
                 </button>
             </form>
@@ -573,6 +637,7 @@
             setupEventListeners();
             checkBlockStatus();
             setupQuickFill();
+            setupAutoLogin();
             console.log('🚀 Master Login System initialized');
         }
 
@@ -584,6 +649,13 @@
             // Real-time validation
             document.getElementById('usernameInput').addEventListener('input', validateForm);
             document.getElementById('passwordInput').addEventListener('input', validateForm);
+            
+            // Enter key support
+            document.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    handleLoginSubmit(e);
+                }
+            });
             
             // Auto-focus
             document.getElementById('usernameInput').focus();
@@ -603,6 +675,22 @@
             });
         }
 
+        function setupAutoLogin() {
+            // Auto-login for development
+            const urlParams = new URLSearchParams(window.location.search);
+            const autoLogin = urlParams.get('auto');
+            
+            if (autoLogin === 'admin') {
+                document.getElementById('usernameInput').value = 'admin';
+                document.getElementById('passwordInput').value = 'admin123';
+                setTimeout(() => document.getElementById('loginForm').dispatchEvent(new Event('submit')), 500);
+            } else if (autoLogin === 'student') {
+                document.getElementById('usernameInput').value = 'user';
+                document.getElementById('passwordInput').value = '1234';
+                setTimeout(() => document.getElementById('loginForm').dispatchEvent(new Event('submit')), 500);
+            }
+        }
+
         // ==================== CORE LOGIN FUNCTION ====================
         async function handleLoginSubmit(e) {
             e.preventDefault();
@@ -616,6 +704,7 @@
             const password = document.getElementById('passwordInput').value.trim();
 
             if (!validateForm()) {
+                showToast('Iltimos, login va parolni kiriting!', 'error');
                 return;
             }
 
@@ -625,44 +714,69 @@
         async function performLogin(username, password) {
             const submitBtn = document.getElementById('submitBtn');
             const loadingSpinner = document.getElementById('loadingSpinner');
+            const btnText = document.getElementById('btnText');
             
             // UI ni yangilash
-            setLoadingState(true, submitBtn, loadingSpinner);
+            setLoadingState(true, submitBtn, btnText, loadingSpinner);
 
             try {
-                const response = await makeLoginRequest(username, password);
-                
-                if (response.success) {
-                    await handleSuccessfulLogin(response, username);
-                } else {
-                    handleFailedLogin(response.error);
+                console.log('🔄 Login attempt for user:', username);
+
+                // CSRF token olish
+                const csrfToken = getCSRFToken();
+                if (!csrfToken) {
+                    throw new Error('CSRF token topilmadi. Sahifani yangilab ko\'ring.');
                 }
-                
+
+                // API so'rovini yuborish
+                const response = await fetch(CONFIG.apiEndpoints.login, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ 
+                        username: username, 
+                        password: password 
+                    })
+                });
+
+                console.log('📡 Response status:', response.status);
+
+                // Response ni tekshirish
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ Server error response:', errorText);
+                    
+                    if (response.status === 404) {
+                        throw new Error('API endpoint topilmadi (404). Server sozlamalarini tekshiring.');
+                    } else if (response.status === 500) {
+                        throw new Error('Server ichki xatosi (500). Server loglarini tekshiring.');
+                    } else {
+                        throw new Error(`Server xatosi: ${response.status} ${response.statusText}`);
+                    }
+                }
+
+                // JSON ni o'qish
+                const data = await response.json();
+                console.log('📊 Response data:', data);
+
+                // Login natijasini tekshirish
+                if (data.success) {
+                    await handleSuccessfulLogin(data, username);
+                } else {
+                    handleFailedLogin(data.error);
+                }
+
             } catch (error) {
+                console.error('💥 Login error:', error);
                 handleLoginError(error);
             } finally {
-                setLoadingState(false, submitBtn, loadingSpinner);
+                setLoadingState(false, submitBtn, btnText, loadingSpinner);
             }
         }
 
         // ==================== API COMMUNICATION ====================
-        async function makeLoginRequest(username, password) {
-            const response = await fetch(CONFIG.apiEndpoints.login, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCSRFToken()
-                },
-                body: JSON.stringify({ username, password })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Server xatosi: ${response.status}`);
-            }
-
-            return await response.json();
-        }
-
         async function setAdminSession() {
             try {
                 const response = await fetch(CONFIG.apiEndpoints.setSession, {
@@ -702,6 +816,7 @@
             // Redirect qilish
             setTimeout(() => {
                 const redirectPath = response.is_admin ? CONFIG.redirectPaths.admin : CONFIG.redirectPaths.student;
+                console.log('🔄 Redirecting to:', redirectPath);
                 performRedirect(redirectPath);
             }, 1500);
 
@@ -716,7 +831,29 @@
 
         function handleLoginError(error) {
             console.error('Login error:', error);
-            showToast('Tarmoq xatosi yuz berdi. Iltimos, qayta urinib ko\'ring.', 'error');
+            
+            // Batafsil xato xabari
+            let errorMessage = 'Tarmoq xatosi yuz berdi. ';
+            
+            if (error.name === 'TypeError') {
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage += 'Serverga ulanib bo\'lmadi. ';
+                    errorMessage += 'Quyidagilarni tekshiring:<br>';
+                    errorMessage += '• Django server ishlayotganligi<br>';
+                    errorMessage += '• API endpoint mavjudligi<br>';
+                    errorMessage += '• Tarmoq sozlamalari';
+                }
+            } else if (error.message.includes('CSRF')) {
+                errorMessage += 'CSRF token muammosi. Sahifani yangilab ko\'ring.';
+            } else if (error.message.includes('404')) {
+                errorMessage += 'API endpoint topilmadi. URL manzilini tekshiring.';
+            } else if (error.message.includes('500')) {
+                errorMessage += 'Server ichki xatosi. Server loglarini tekshiring.';
+            } else {
+                errorMessage += error.message;
+            }
+            
+            showToast(errorMessage, 'error');
         }
 
         // ==================== SECURITY & BLOCK MANAGEMENT ====================
@@ -786,9 +923,7 @@
         }
 
         // ==================== UI UTILITIES ====================
-        function setLoadingState(isLoading, button, spinner) {
-            const buttonText = button.querySelector('span');
-            
+        function setLoadingState(isLoading, button, buttonText, spinner) {
             if (isLoading) {
                 button.disabled = true;
                 spinner.style.display = 'block';
@@ -870,7 +1005,7 @@
         // ==================== UTILITY FUNCTIONS ====================
         function getCSRFToken() {
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
-            return csrfToken ? csrfToken.value : '';
+            return csrfToken ? csrfToken.value : null;
         }
 
         // ==================== DEBUG & LOGGING ====================
@@ -878,7 +1013,16 @@
         console.log('📋 Demo Credentials:', CONFIG.demoCredentials);
         console.log('🔗 API Endpoints:', CONFIG.apiEndpoints);
         console.log('🔄 Quick Fill: Ctrl+1 (Admin), Ctrl+2 (Student)');
+        console.log('🔧 Auto Login: ?auto=admin yoki ?auto=student');
+        console.log('📍 Current URL:', window.location.href);
+        console.log('🔑 CSRF Token:', getCSRFToken());
         console.log('✅ System Ready!');
+
+        // Test API endpoint
+        fetch(CONFIG.apiEndpoints.login, { method: 'GET' })
+            .then(response => console.log('🌐 API Test - Status:', response.status))
+            .catch(error => console.error('🌐 API Test - Error:', error.message));
+
     </script>
 </body>
 </html>
