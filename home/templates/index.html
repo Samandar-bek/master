@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Master2 - Premium Test Platformasi</title>
+    <title>Master - Premium Test Platformasi</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <style>
         :root {
@@ -380,57 +380,6 @@
             margin-bottom: 8px;
         }
 
-        .messages {
-            margin-bottom: 25px;
-            animation: slideDown 0.6s ease both;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .alert {
-            padding: 18px;
-            border-radius: 12px;
-            text-align: center;
-            font-weight: 500;
-            margin-bottom: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid;
-            animation: shake 0.5s ease;
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-5px); }
-            75% { transform: translateX(5px); }
-        }
-
-        .alert-error {
-            background: rgba(239, 68, 68, 0.1);
-            color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.3);
-        }
-
-        .alert-success {
-            background: rgba(16, 185, 129, 0.1);
-            color: #86efac;
-            border-color: rgba(16, 185, 129, 0.3);
-        }
-
-        .alert-info {
-            background: rgba(6, 182, 212, 0.1);
-            color: #67e8f9;
-            border-color: rgba(6, 182, 212, 0.3);
-        }
-
         /* Loading animation */
         .loading-spinner {
             width: 24px;
@@ -525,9 +474,6 @@
     </style>
 </head>
 <body>
-    <!-- CSRF Token for Django -->
-    {% csrf_token %}
-    
     <!-- Animated Background -->
     <div class="animated-bg">
         <div class="floating-shapes">
@@ -546,23 +492,20 @@
                 <div class="logo-icon">
                     <i class='bx bx-brain'></i>
                 </div>
-                <h1>Master1</h1>
+                <h1>Master</h1>
                 <p>Premium Test Platformasi</p>
-            </div>
-            
-            <!-- Messages -->
-            <div class="messages" id="messages">
-                <!-- Messages will be displayed here -->
             </div>
 
             <!-- Login Form -->
             <form id="loginForm">
+                {% csrf_token %}
+                
                 <div class="form-group">
-                    <input type="text" class="form-input" name="username" placeholder="Login" required id="usernameInput" value="user">
+                    <input type="text" class="form-input" name="username" placeholder="Login" required id="usernameInput" value="admin">
                     <i class='bx bx-user input-icon'></i>
                 </div>
                 <div class="form-group">
-                    <input type="password" class="form-input" name="password" placeholder="Parol" required id="passwordInput" value="1234">
+                    <input type="password" class="form-input" name="password" placeholder="Parol" required id="passwordInput" value="admin123">
                     <i class='bx bx-lock-alt input-icon'></i>
                 </div>
                 <button type="submit" class="btn" id="submitBtn">
@@ -571,304 +514,319 @@
                 </button>
             </form>
 
+            <!-- Demo Information -->
+            <div class="admin-note">
+                <h3 style="margin-bottom: 10px;">💡 Demo Ma'lumotlar</h3>
+                <div style="text-align: left; font-size: 14px;">
+                    <p><strong>👨‍💼 Admin:</strong> admin / admin123</p>
+                    <p><strong>👨‍🎓 Talaba:</strong> user / 1234</p>
+                    <p style="margin-top: 10px; color: var(--warning); font-size: 12px;">
+                        <i class='bx bx-info-circle'></i>
+                        Tez kirish: <strong>Ctrl+1</strong> (Admin) yoki <strong>Ctrl+2</strong> (Talaba)
+                    </p>
+                </div>
+            </div>
+
             <!-- Register Section -->
             <div class="register-section">
                 <p>Hali hisobingiz yo'qmi?</p>
-                <button class="btn btn-telegram" onclick="goToTelegram()">
+                <button type="button" class="btn btn-telegram" onclick="goToTelegram()">
                     <i class='bx bxl-telegram'></i>
-                    <span>Ro'yxatdan o'tish</span>
+                    <span>Telegram orqali bog'lanish</span>
                 </button>
             </div>
         </div>
     </div>
 
     <script>
-        // App State
+        // ==================== CONFIGURATION ====================
+        const CONFIG = {
+            demoCredentials: {
+                admin: { username: "admin", password: "admin123" },
+                student: { username: "user", password: "1234" }
+            },
+            telegramUsername: "Master_Dragon_1",
+            apiEndpoints: {
+                login: '/api/student-login/',
+                setSession: '/api/set-admin-session/'
+            },
+            redirectPaths: {
+                admin: '/admin-dashboard/',
+                student: '/student-dashboard/'
+            }
+        };
+
+        // ==================== STATE MANAGEMENT ====================
         const appState = {
-            loginAttempts: 0,
+            loginAttempts: parseInt(localStorage.getItem('loginAttempts')) || 0,
             isBlocked: false,
-            blockTime: 0
+            blockTime: 0,
+            currentUser: null
         };
 
-        // Demo credentials
-        const demoCredentials = {
-            username: "user",
-            password: "1234"
-        };
-
-        // Telegram username
-        const telegramUsername = "Master_Dragon_1";
-
-        // Initialize the page
+        // ==================== INITIALIZATION ====================
         document.addEventListener('DOMContentLoaded', function() {
-            setupEventListeners();
-            checkBlockStatus();
-            
-            // Auto-fill demo credentials for easier testing
-            document.getElementById('usernameInput').value = demoCredentials.username;
-            document.getElementById('passwordInput').value = demoCredentials.password;
+            initializeApp();
         });
 
-        // Setup all event listeners
+        function initializeApp() {
+            setupEventListeners();
+            checkBlockStatus();
+            setupQuickFill();
+            console.log('🚀 Master Login System initialized');
+        }
+
+        // ==================== EVENT LISTENERS ====================
         function setupEventListeners() {
-            // Login form submissions
-            document.getElementById('loginForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                handleLogin();
-            });
-
-            // Enter key to submit
-            document.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    handleLogin();
-                }
-            });
-
-            // Auto-focus on username input
+            // Form submission
+            document.getElementById('loginForm').addEventListener('submit', handleLoginSubmit);
+            
+            // Real-time validation
+            document.getElementById('usernameInput').addEventListener('input', validateForm);
+            document.getElementById('passwordInput').addEventListener('input', validateForm);
+            
+            // Auto-focus
             document.getElementById('usernameInput').focus();
         }
 
-        // Go to Telegram
-        function goToTelegram() {
-            showToast('Telegramga yo\'naltirilmoqda...', 'info');
-            
-            // Telegram link
-            const telegramLink = `https://t.me/${telegramUsername}`;
-            
-            // Yangi oynada ochish
-            setTimeout(() => {
-                window.open(telegramLink, '_blank');
-                
-                // Qo'shimcha ma'lumot
-                showToast(`@${telegramUsername} ga murojaat qiling!`, 'success');
-            }, 1000);
-        }
-
-        // Check if user is blocked
-        function checkBlockStatus() {
-            const blockedUntil = localStorage.getItem('blockedUntil');
-            if (blockedUntil && Date.now() < parseInt(blockedUntil)) {
-                appState.isBlocked = true;
-                appState.blockTime = parseInt(blockedUntil) - Date.now();
-                showBlockMessage();
-            } else {
-                localStorage.removeItem('blockedUntil');
-                localStorage.removeItem('loginAttempts');
-            }
-        }
-
-        // Show block message
-        function showBlockMessage() {
-            const minutes = Math.ceil(appState.blockTime / 60000);
-            showToast(`Siz bloklangansiz! ${minutes} daqiqadan keyin qayta urinib ko'ring.`, 'error');
-            document.getElementById('submitBtn').disabled = true;
-            
-            const countdown = setInterval(() => {
-                appState.blockTime -= 1000;
-                if (appState.blockTime <= 0) {
-                    clearInterval(countdown);
-                    appState.isBlocked = false;
-                    document.getElementById('submitBtn').disabled = false;
-                    localStorage.removeItem('blockedUntil');
-                    showToast('Blok olindi! Endi tizimga kira olasiz.', 'success');
+        function setupQuickFill() {
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey) {
+                    if (e.key === '1') {
+                        fillCredentials('admin');
+                        e.preventDefault();
+                    } else if (e.key === '2') {
+                        fillCredentials('student');
+                        e.preventDefault();
+                    }
                 }
-            }, 1000);
+            });
         }
 
-        // Handle login - ⭐⭐⭐ TO'LIQ TO'G'RILANGAN ⭐⭐⭐
-        async function handleLogin() {
+        // ==================== CORE LOGIN FUNCTION ====================
+        async function handleLoginSubmit(e) {
+            e.preventDefault();
+            
             if (appState.isBlocked) {
-                showToast('Siz hali bloklangansiz!', 'error');
+                showToast('Siz bloklangansiz! Iltimos, kuting.', 'error');
                 return;
             }
 
             const username = document.getElementById('usernameInput').value.trim();
             const password = document.getElementById('passwordInput').value.trim();
-            
-            if (!username || !password) {
-                showToast('Iltimos, login va parolni kiriting!', 'error');
+
+            if (!validateForm()) {
                 return;
             }
 
-            // Show loading
+            await performLogin(username, password);
+        }
+
+        async function performLogin(username, password) {
             const submitBtn = document.getElementById('submitBtn');
             const loadingSpinner = document.getElementById('loadingSpinner');
-            const btnText = submitBtn.querySelector('span');
             
-            submitBtn.disabled = true;
-            loadingSpinner.style.display = 'block';
-            btnText.textContent = 'Kirish amalga oshirilmoqda...';
+            // UI ni yangilash
+            setLoadingState(true, submitBtn, loadingSpinner);
 
             try {
-                // Demo login tekshirish
-                if (username === demoCredentials.username && password === demoCredentials.password) {
-                    // Admin panelga yo'naltirish
-                    showToast('Muvaffaqiyatli kirish! Admin panelga yo\'naltirilmoqda...', 'success');
-                    
-                    // ⭐⭐⭐ SMART REDIRECT - 100% ISHLAYDI ⭐⭐⭐
-                    await smartAdminRedirect();
-                    
+                const response = await makeLoginRequest(username, password);
+                
+                if (response.success) {
+                    await handleSuccessfulLogin(response, username);
                 } else {
-                    // Agar demo login bo'lmasa, Django login endpointiga so'rov yuborish
-                    await submitToDjangoLogin(username, password);
+                    handleFailedLogin(response.error);
                 }
+                
             } catch (error) {
-                console.error('Login error:', error);
-                showToast('Kirishda xatolik yuz berdi!', 'error');
-                handleFailedLogin();
+                handleLoginError(error);
             } finally {
-                submitBtn.disabled = false;
-                loadingSpinner.style.display = 'none';
-                btnText.textContent = 'Tizimga Kirish';
+                setLoadingState(false, submitBtn, loadingSpinner);
             }
         }
 
-        // ⭐⭐⭐ SMART ADMIN REDIRECT - 100% ISHLAYDI ⭐⭐⭐
-        async function smartAdminRedirect() {
-            console.log('=== SMART REDIRECT STARTED ===');
-            
-            try {
-                // 1. Session o'rnatish (muvaffaqiyatli bo'lsa ham, bo'lmasa ham)
-                await setAdminSession();
-                
-                // 2. 3 bosqichli redirect system
-                let redirectAttempt = 1;
-                
-                const redirectPaths = [
-                    '/admin-dashboard/',  // Django view
-                    '/admin.html',        // Static HTML
-                    '/admin-page/'        // Alternative
-                ];
-                
-                const tryRedirect = (pathIndex) => {
-                    if (pathIndex >= redirectPaths.length) {
-                        console.log('All redirect attempts failed');
-                        showToast('Qayta urinib ko\'ring!', 'error');
-                        return;
-                    }
-                    
-                    const path = redirectPaths[pathIndex];
-                    console.log(`Redirect attempt ${redirectAttempt}: ${path}`);
-                    
-                    setTimeout(() => {
-                        window.location.href = path;
-                        
-                        // Agar 3 soniyada sahifa o'zgarmasa, keyingi bosqichga o'tish
-                        setTimeout(() => {
-                            if (window.location.pathname === '/' || 
-                                window.location.pathname.includes('index') ||
-                                window.location.href.includes('master-izlq')) {
-                                
-                                console.log(`Redirect ${redirectAttempt} failed, trying next...`);
-                                redirectAttempt++;
-                                tryRedirect(pathIndex + 1);
-                            } else {
-                                console.log(`Redirect ${redirectAttempt} successful!`);
-                            }
-                        }, 3000);
-                        
-                    }, 1500);
-                };
-                
-                // Birinchi bosqichni boshlash
-                tryRedirect(0);
-                
-            } catch (error) {
-                console.error('Smart redirect error:', error);
-                // Emergency fallback
-                setTimeout(() => {
-                    window.location.href = '/admin.html';
-                }, 1500);
+        // ==================== API COMMUNICATION ====================
+        async function makeLoginRequest(username, password) {
+            const response = await fetch(CONFIG.apiEndpoints.login, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ username, password })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server xatosi: ${response.status}`);
             }
+
+            return await response.json();
         }
 
-        // Set admin session
         async function setAdminSession() {
             try {
-                const response = await fetch('/api/set-admin-session/', {
+                const response = await fetch(CONFIG.apiEndpoints.setSession, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRFToken': getCSRFToken(),
+                        'X-CSRFToken': getCSRFToken()
                     },
                     body: JSON.stringify({
                         is_admin: true,
                         admin_name: 'Admin User'
                     })
                 });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Admin session response:', data);
-                    return data;
-                } else {
-                    console.warn('Session API error, continuing anyway');
-                    return { success: true };
-                }
+                return response.ok;
             } catch (error) {
-                console.warn('Session setting failed, continuing anyway:', error);
-                return { success: true };
+                console.warn('Session setting failed:', error);
+                return true; // Session o'rnatish muvaffaqiyatsiz bo'lsa ham davom et
             }
         }
 
-        // Submit to Django login
-        async function submitToDjangoLogin(username, password) {
-            const data = {
+        // ==================== LOGIN HANDLERS ====================
+        async function handleSuccessfulLogin(response, username) {
+            showToast(response.message || 'Muvaffaqiyatli kirish!', 'success');
+            
+            // Session ma'lumotlarini saqlash
+            appState.currentUser = {
                 username: username,
-                password: password
+                isAdmin: response.is_admin,
+                name: response.is_admin ? 'Admin' : response.student_name
             };
-            
-            const response = await fetch('/api/student-login/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCSRFToken(),
-                },
-                body: JSON.stringify(data)
-            });
 
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
+            // Admin bo'lsa session o'rnatish
+            if (response.is_admin) {
+                await setAdminSession();
             }
 
-            const result = await response.json();
-            
-            if (result.success) {
-                showToast(result.message || 'Muvaffaqiyatli kirish! Yo\'naltirilmoqda...', 'success');
-                setTimeout(() => {
-                    if (result.is_admin) {
-                        window.location.href = '/admin-dashboard/';
-                    } else {
-                        window.location.href = '/student-dashboard/';
-                    }
-                }, 1500);
-            } else {
-                showToast(result.error || 'Login yoki parol noto\'g\'ri!', 'error');
-                handleFailedLogin();
-            }
+            // Redirect qilish
+            setTimeout(() => {
+                const redirectPath = response.is_admin ? CONFIG.redirectPaths.admin : CONFIG.redirectPaths.student;
+                performRedirect(redirectPath);
+            }, 1500);
+
+            // Bloklash holatini tozalash
+            resetLoginAttempts();
         }
 
-        // CSRF token olish
-        function getCSRFToken() {
-            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
-            return csrfToken ? csrfToken.value : '';
+        function handleFailedLogin(errorMessage) {
+            showToast(errorMessage || 'Login yoki parol noto\'g\'ri!', 'error');
+            handleFailedLoginAttempt();
         }
 
-        // Handle failed login attempts
-        function handleFailedLogin() {
+        function handleLoginError(error) {
+            console.error('Login error:', error);
+            showToast('Tarmoq xatosi yuz berdi. Iltimos, qayta urinib ko\'ring.', 'error');
+        }
+
+        // ==================== SECURITY & BLOCK MANAGEMENT ====================
+        function handleFailedLoginAttempt() {
             appState.loginAttempts++;
-            localStorage.setItem('loginAttempts', appState.loginAttempts);
-            
+            localStorage.setItem('loginAttempts', appState.loginAttempts.toString());
+
             if (appState.loginAttempts >= 3) {
-                const blockTime = 5 * 60 * 1000; // 5 minutes
-                localStorage.setItem('blockedUntil', Date.now() + blockTime);
-                appState.isBlocked = true;
-                appState.blockTime = blockTime;
-                showBlockMessage();
+                blockUser(5 * 60 * 1000); // 5 daqiqa bloklash
+            } else {
+                const remainingAttempts = 3 - appState.loginAttempts;
+                showToast(`Noto'g'ri parol! ${remainingAttempts} marta urinish qoldi.`, 'warning');
             }
         }
 
-        // Show toast message
+        function blockUser(blockTime) {
+            appState.isBlocked = true;
+            appState.blockTime = blockTime;
+            const blockedUntil = Date.now() + blockTime;
+            
+            localStorage.setItem('blockedUntil', blockedUntil.toString());
+            showBlockMessage(blockTime);
+            
+            startBlockCountdown();
+        }
+
+        function showBlockMessage(blockTime) {
+            const minutes = Math.ceil(blockTime / 60000);
+            showToast(`Siz ${minutes} daqiqaga bloklandingiz!`, 'error');
+            document.getElementById('submitBtn').disabled = true;
+        }
+
+        function startBlockCountdown() {
+            const countdown = setInterval(() => {
+                appState.blockTime -= 1000;
+                
+                if (appState.blockTime <= 0) {
+                    clearInterval(countdown);
+                    unblockUser();
+                }
+            }, 1000);
+        }
+
+        function unblockUser() {
+            appState.isBlocked = false;
+            appState.loginAttempts = 0;
+            localStorage.removeItem('blockedUntil');
+            localStorage.removeItem('loginAttempts');
+            
+            document.getElementById('submitBtn').disabled = false;
+            showToast('Blok olindi! Endi tizimga kira olasiz.', 'success');
+        }
+
+        function checkBlockStatus() {
+            const blockedUntil = localStorage.getItem('blockedUntil');
+            if (blockedUntil && Date.now() < parseInt(blockedUntil)) {
+                appState.isBlocked = true;
+                appState.blockTime = parseInt(blockedUntil) - Date.now();
+                showBlockMessage(appState.blockTime);
+                startBlockCountdown();
+            }
+        }
+
+        function resetLoginAttempts() {
+            appState.loginAttempts = 0;
+            localStorage.removeItem('loginAttempts');
+        }
+
+        // ==================== UI UTILITIES ====================
+        function setLoadingState(isLoading, button, spinner) {
+            const buttonText = button.querySelector('span');
+            
+            if (isLoading) {
+                button.disabled = true;
+                spinner.style.display = 'block';
+                buttonText.textContent = 'Kirish amalga oshirilmoqda...';
+            } else {
+                button.disabled = false;
+                spinner.style.display = 'none';
+                buttonText.textContent = 'Tizimga Kirish';
+            }
+        }
+
+        function validateForm() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value.trim();
+            const isValid = username.length > 0 && password.length > 0;
+            
+            document.getElementById('submitBtn').disabled = !isValid;
+            return isValid;
+        }
+
+        function fillCredentials(type) {
+            const credentials = CONFIG.demoCredentials[type];
+            if (credentials) {
+                document.getElementById('usernameInput').value = credentials.username;
+                document.getElementById('passwordInput').value = credentials.password;
+                showToast(`${type === 'admin' ? 'Admin' : 'Talaba'} ma'lumotlari qo'shildi`, 'info');
+                
+                // Formani tekshirish
+                validateForm();
+            }
+        }
+
+        function performRedirect(path) {
+            console.log(`Redirecting to: ${path}`);
+            window.location.href = path;
+        }
+
+        // ==================== TOAST SYSTEM ====================
         function showToast(message, type = 'info') {
             const toastContainer = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -877,6 +835,7 @@
             const icons = {
                 'success': 'bx-check-circle',
                 'error': 'bx-error-circle',
+                'warning': 'bx-error-circle',
                 'info': 'bx-info-circle'
             };
             
@@ -887,35 +846,39 @@
             
             toastContainer.appendChild(toast);
             
-            // Auto remove after 5 seconds
+            // Auto-remove after 5 seconds
             setTimeout(() => {
-                toast.style.animation = 'slideInRight 0.3s ease reverse';
-                setTimeout(() => {
-                    if (toast.parentNode) {
-                        toast.remove();
-                    }
-                }, 300);
+                if (toast.parentNode) {
+                    toast.style.animation = 'slideInRight 0.3s ease reverse';
+                    setTimeout(() => toast.remove(), 300);
+                }
             }, 5000);
         }
 
-        // Load login attempts from localStorage
-        const savedAttempts = localStorage.getItem('loginAttempts');
-        if (savedAttempts) {
-            appState.loginAttempts = parseInt(savedAttempts);
+        // ==================== TELEGRAM FUNCTION ====================
+        function goToTelegram() {
+            showToast('Telegramga yo\'naltirilmoqda...', 'info');
+            
+            const telegramLink = `https://t.me/${CONFIG.telegramUsername}`;
+            
+            setTimeout(() => {
+                window.open(telegramLink, '_blank');
+                showToast(`@${CONFIG.telegramUsername} ga murojaat qiling!`, 'success');
+            }, 1000);
         }
 
-        // Prevent form resubmission
-        if (window.history.replaceState) {
-            window.history.replaceState(null, null, window.location.href);
+        // ==================== UTILITY FUNCTIONS ====================
+        function getCSRFToken() {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+            return csrfToken ? csrfToken.value : '';
         }
 
-        // Debug info
-        console.log('=== MASTER1 LOGIN SYSTEM LOADED ===');
-        console.log('Demo credentials:', demoCredentials);
-        console.log('Available admin paths:');
-        console.log('1. /admin-dashboard/ (Django view)');
-        console.log('2. /admin.html (Static HTML)');
-        console.log('3. /admin-page/ (Alternative)');
+        // ==================== DEBUG & LOGGING ====================
+        console.log('=== 🚀 MASTER LOGIN SYSTEM ===');
+        console.log('📋 Demo Credentials:', CONFIG.demoCredentials);
+        console.log('🔗 API Endpoints:', CONFIG.apiEndpoints);
+        console.log('🔄 Quick Fill: Ctrl+1 (Admin), Ctrl+2 (Student)');
+        console.log('✅ System Ready!');
     </script>
 </body>
 </html>

@@ -35,7 +35,8 @@ def student_login_credentials(request):
             return JsonResponse({
                 'success': True, 
                 'message': "Admin sifatida muvaffaqiyatli kirdingiz!",
-                'is_admin': True
+                'is_admin': True,
+                'redirect_url': '/admin-dashboard/'  # ✅ QO'SHIMCHA: redirect URL
             })
         
         # Student login
@@ -74,7 +75,8 @@ def student_login_credentials(request):
                 return JsonResponse({
                     'success': True, 
                     'message': f"Xush kelibsiz, {request.session['student_name']}!",
-                    'is_admin': False
+                    'is_admin': False,
+                    'redirect_url': '/student-dashboard/'  # ✅ QO'SHIMCHA: redirect URL
                 })
             else:
                 # Failed login
@@ -354,7 +356,7 @@ def get_results(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_ranking(request):
+def get_ranking_admin(request):  # ✅ NOMI O'ZGARTIRILDI: get_ranking -> get_ranking_admin
     """O'quvchilar reytingini olish (admin uchun)"""
     if not request.session.get('is_admin'):
         return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
@@ -662,8 +664,6 @@ def get_student_results(request):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-
-
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_student_ranking(request):
@@ -676,8 +676,8 @@ def get_student_ranking(request):
         ranking = Student.objects.annotate(
             avg_score=Avg('testresult__score'),
             tests_taken=Count('testresult'),
-            max_score=Max('testresult__score')  # Eng yuqori ballni ham olish
-        ).filter(tests_taken__gt=0).order_by('-max_score', '-avg_score')  # Eng yuqori ball bo'yicha saralash
+            max_score=Max('testresult__score')
+        ).filter(tests_taken__gt=0).order_by('-max_score', '-avg_score')
         
         ranking_data = []
         for student in ranking:
@@ -688,7 +688,7 @@ def get_student_ranking(request):
                 'id': student.id,
                 'ism': student.ism,
                 'familya': student.familya,
-                'max_score': float(max_score),  # Eng yuqori ball
+                'max_score': float(max_score),
                 'avg_score': float(student.avg_score or 0),
                 'tests_taken': student.tests_taken
             })
@@ -723,7 +723,7 @@ def get_student_activity(request):
         
         activities = StudentActivity.objects.filter(student=student).values(
             'activity_type', 'details', 'created_at'
-        ).order_by('-created_at')[:10]  # So'nggi 10 ta faoliyat
+        ).order_by('-created_at')[:10]
         
         return JsonResponse({'success': True, 'activities': list(activities)})
     except Exception as e:
@@ -747,63 +747,3 @@ def health_check(request):
         'timestamp': timezone.now().isoformat(),
         'version': '1.0.0'
     })
-    
-def get_ranking(request):
-    if request.method == 'GET':
-        try:
-            # O'quvchilarni o'rtacha ball bo'yicha saralash
-            ranking = Student.objects.annotate(
-                avg_score=Avg('testresult__score'),
-                tests_taken=Count('testresult')
-            ).filter(
-                tests_taken__gt=0
-            ).order_by('-avg_score')[:20]  # Faqat top 20 talaba
-            
-            ranking_data = []
-            for index, student in enumerate(ranking):
-                ranking_data.append({
-                    'id': student.id,
-                    'ism': student.ism,
-                    'familya': student.familya,
-                    'avg_score': float(student.avg_score) if student.avg_score else 0,
-                    'tests_taken': student.tests_taken
-                })
-            
-            # Joriy o'quvchining reytingi
-            current_student_id = request.session.get('student_id')
-            my_ranking = None
-            
-            if current_student_id:
-                try:
-                    current_student = Student.objects.get(id=current_student_id)
-                    # Barcha o'quvchilarni o'rtacha ball bo'yicha saralash
-                    all_students = Student.objects.annotate(
-                        avg_score=Avg('testresult__score'),
-                        tests_taken=Count('testresult')
-                    ).filter(
-                        tests_taken__gt=0
-                    ).order_by('-avg_score')
-                    
-                    # Joriy o'quvchining o'rni
-                    for position, student in enumerate(all_students, 1):
-                        if student.id == current_student.id:
-                            my_ranking = {
-                                'position': position,
-                                'avg_score': float(student.avg_score) if student.avg_score else 0,
-                                'tests_taken': student.tests_taken
-                            }
-                            break
-                except Student.DoesNotExist:
-                    pass
-            
-            return JsonResponse({
-                'success': True,
-                'ranking': ranking_data,
-                'my_ranking': my_ranking
-            })
-            
-        except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': str(e)
-            })
