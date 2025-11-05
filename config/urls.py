@@ -6,11 +6,14 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('home.urls')),  # home ilovangiz
     
-    # HTML sahifalarni to'g'ridan-to'g'ri ko'rsatish
-    path('', TemplateView.as_view(template_name='index.html'), name='index'),
+    # FAQRAT BIRTA "" YO'L BO'LISHI KERAK!
+    path('', include('home.urls')),  # home ilovasi - ASOSIY YO'L
+    
+    # Qo'shimcha HTML sahifalar
+    path('admin.html', TemplateView.as_view(template_name='admin.html'), name='admin_html'),
     path('admin-page/', TemplateView.as_view(template_name='admin.html'), name='admin_page'),
+    path('student.html', TemplateView.as_view(template_name='student.html'), name='student_html'),
     path('student/', TemplateView.as_view(template_name='student.html'), name='student'),
 ]
 
