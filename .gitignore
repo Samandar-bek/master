@@ -1,0 +1,80 @@
+# ==========================
+# 🐍 Python umumiy
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+
+# ==========================
+# 🧱 Django
+# ==========================
+db.sqlite3
+media/
+staticfiles/
+*.log
+*.pot
+*.pyc
+*.mo
+
+# ==========================
+# 🧪 Virtual environment
+# ==========================
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================
+# 📦 IDE / Editor fayllari
+# ==========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==========================
+# 🚀 Render, GitHub & tizim fayllar
+# ==========================
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.orig
+
+# ==========================
+# 🔐 Maxfiy fayllar
+# ==========================
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# ==========================
+# 📸 Test / Cache / Profiling
+# ==========================
+.coverage
+*.cover
+.cache/
+nosetests.xml
+coverage.xml
+*.spec
+
+# ==========================
+# 🔧 PyInstaller
+# ==========================
+build/
+dist/
+*.manifest
+*.spec
+
+# ==========================
+# ⚙️ Render log & config
+# ==========================
+*.log
+render.yaml
