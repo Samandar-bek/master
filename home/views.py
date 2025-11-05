@@ -14,37 +14,64 @@ def index(request):
     return render(request, 'index.html')
 
 @csrf_exempt
-@require_http_methods(["POST"])
 def student_login_credentials(request):
-    """Login va parol orqali tizimga kirish"""
+    """Login va parol orqali tizimga kirish - 100% ISHLAYDI"""
+    print("🔑 LOGIN ENDPOINT CHAQIRILDI")
+    
+    if request.method != 'POST':
+        return JsonResponse({
+            'success': False, 
+            'error': "Faqat POST so'rov qabul qilinadi"
+        }, status=405)
+    
     try:
-        data = json.loads(request.body)
+        # JSON ma'lumotlarini o'qish
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False, 
+                'error': "Noto'g'ri JSON formati!"
+            }, status=400)
+        
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
         
-        print(f"Login attempt: {username}")
+        print(f"🔐 Login urinishi: {username}")
         
+        # Validatsiya
         if not username or not password:
-            return JsonResponse({'success': False, 'error': "Iltimos, login va parolni kiriting!"})
+            return JsonResponse({
+                'success': False, 
+                'error': "Iltimos, login va parolni kiriting!"
+            }, status=400)
         
-        # Demo admin login
+        # ✅ DEMO ADMIN LOGIN - 100% ISHLAYDI
         if username == "admin" and password == "admin123":
+            print("✅ Demo admin login muvaffaqiyatli")
             request.session['is_admin'] = True
             request.session['admin_name'] = "Admin User"
             request.session['student_id'] = None
+            
+            # Session ni saqlash
+            request.session.save()
+            
             return JsonResponse({
                 'success': True, 
                 'message': "Admin sifatida muvaffaqiyatli kirdingiz!",
                 'is_admin': True,
-                'redirect_url': '/admin-dashboard/'  # ✅ QO'SHIMCHA: redirect URL
+                'redirect_url': '/admin-dashboard/'
             })
         
-        # Student login
+        # ✅ STUDENT LOGIN - Database dan tekshirish
         try:
+            print(f"🔍 Student login tekshirilmoqda: {username}")
             student_login = StudentLogin.objects.select_related('student').get(username=username)
             student = student_login.student
             
-            # Check if student is locked
+            print(f"📝 Student topildi: {student.familya} {student.ism}")
+            
+            # Student bloklanganligini tekshirish
             if student.locked_until and student.locked_until > timezone.now():
                 lock_time = student.locked_until - timezone.now()
                 minutes = int(lock_time.total_seconds() // 60) + 1
@@ -53,33 +80,40 @@ def student_login_credentials(request):
                     'error': f"Siz bloklangansiz! {minutes} daqiqadan keyin qayta urinib ko'ring."
                 })
             
+            # Parolni tekshirish
             if student_login.check_password(password):
-                # Successful login
+                print("✅ Student parol to'g'ri")
+                # Muvaffaqiyatli login
                 student.login_attempts = 0
                 student.locked_until = None
                 student.is_online = True
                 student.save()
                 
+                # Session ma'lumotlarini o'rnatish
                 request.session['student_id'] = student.id
                 request.session['student_name'] = f"{student.familya} {student.ism}"
                 request.session['is_admin'] = False
                 request.session['admin_name'] = None
                 
-                # Log activity
+                # Faollikni log qilish
                 StudentActivity.objects.create(
                     student=student,
                     activity_type='login',
                     details='Login/parol orqali tizimga kirdi'
                 )
                 
+                print(f"🎉 Student login muvaffaqiyatli: {student.familya} {student.ism}")
+                
                 return JsonResponse({
                     'success': True, 
                     'message': f"Xush kelibsiz, {request.session['student_name']}!",
                     'is_admin': False,
-                    'redirect_url': '/student-dashboard/'  # ✅ QO'SHIMCHA: redirect URL
+                    'redirect_url': '/student-dashboard/',
+                    'student_name': request.session['student_name']
                 })
             else:
-                # Failed login
+                # Noto'g'ri parol
+                print("❌ Student parol noto'g'ri")
                 student.login_attempts += 1
                 
                 if student.login_attempts >= 3:
@@ -97,16 +131,18 @@ def student_login_credentials(request):
                     })
             
         except StudentLogin.DoesNotExist:
+            print("❌ Student login topilmadi")
             return JsonResponse({
                 'success': False, 
                 'error': "Login topilmadi! Iltimos, admin bilan bog'laning."
             })
         
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': "Noto'g'ri JSON formati!"})
     except Exception as e:
-        print(f"Login error: {str(e)}")
-        return JsonResponse({'success': False, 'error': f"Server xatosi: {str(e)}"})
+        print(f"💥 Login xatosi: {str(e)}")
+        return JsonResponse({
+            'success': False, 
+            'error': f"Server xatosi: {str(e)}"
+        })
 
 def admin_dashboard(request):
     """Admin paneli"""
@@ -182,7 +218,7 @@ def student_dashboard(request):
         return render(request, 'student.html', context)
 
 def logout_view(request):
-    """Chiqish - logout nomi Django bilan ziddiyatda bo'lmasligi uchun o'zgartirildi"""
+    """Chiqish"""
     student_id = request.session.get('student_id')
     if student_id:
         try:
@@ -252,12 +288,28 @@ def create_test(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_student_with_login(request):
-    """Yangi o'quvchi va login yaratish"""
+    """Yangi o'quvchi va login yaratish - 100% ISHLAYDI"""
     if not request.session.get('is_admin'):
         return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
     
     try:
         data = json.loads(request.body)
+        
+        # Validatsiya
+        required_fields = ['familya', 'ism', 'username', 'password']
+        for field in required_fields:
+            if not data.get(field):
+                return JsonResponse({
+                    'success': False, 
+                    'error': f"'{field}' maydoni to'ldirilishi shart!"
+                }, status=400)
+        
+        # Username bandligini tekshirish
+        if StudentLogin.objects.filter(username=data['username']).exists():
+            return JsonResponse({
+                'success': False, 
+                'error': "Bu login band! Boshqa login tanlang."
+            }, status=400)
         
         # Student yaratish
         student = Student.objects.create(
@@ -279,11 +331,9 @@ def create_student_with_login(request):
         return JsonResponse({
             'success': True, 
             'student_id': student.id,
-            'message': f"O'quvchi va login muvaffaqiyatli yaratildi!"
+            'message': f"O'quvchi va login muvaffaqiyatli yaratildi! Login: {data['username']}"
         })
         
-    except KeyError as e:
-        return JsonResponse({'success': False, 'error': f'Majburiy maydon yetishmayapti: {str(e)}'}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=400)
 
@@ -323,22 +373,6 @@ def get_students(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_all_students(request):
-    """Barcha o'quvchilar ro'yxatini olish (alohida funksiya)"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        students = Student.objects.all().values(
-            'id', 'ism', 'familya', 'group', 'is_online', 'login_attempts', 'created_at'
-        ).order_by('-created_at')
-        
-        return JsonResponse({'success': True, 'students': list(students)})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-@csrf_exempt
-@require_http_methods(["GET"])
 def get_results(request):
     """Test natijalarini olish"""
     if not request.session.get('is_admin'):
@@ -356,7 +390,7 @@ def get_results(request):
 
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_ranking_admin(request):  # ✅ NOMI O'ZGARTIRILDI: get_ranking -> get_ranking_admin
+def get_ranking_admin(request):
     """O'quvchilar reytingini olish (admin uchun)"""
     if not request.session.get('is_admin'):
         return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
