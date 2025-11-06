@@ -1,61 +1,33 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.utils import timezone
-from django.db.models import Count, Avg, Q, Max
+from django.contrib import messages
 from django.views.decorators.http import require_http_methods
-from django.db import transaction
+from django.db.models import Count, Avg, Max
+from django.utils import timezone
 import json
-from .models import Student, Test, Question, Answer, TestResult, StudentActivity, StudentLogin
+from .models import Student, Test, Question, Answer, TestResult, StudentLogin, StudentActivity
 
 def index(request):
     """Asosiy sahifa"""
     return render(request, 'index.html')
 
 @csrf_exempt
+@require_http_methods(["POST"])
 def student_login_credentials(request):
-    """Login va parol orqali tizimga kirish - 100% ISHLAYDI"""
-    print("🔑 LOGIN ENDPOINT CHAQIRILDI")
-    
-    if request.method != 'POST':
-        return JsonResponse({
-            'success': False, 
-            'error': "Faqat POST so'rov qabul qilinadi"
-        }, status=405)
-    
+    """Login va parol orqali tizimga kirish"""
     try:
-        # JSON ma'lumotlarini o'qish
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({
-                'success': False, 
-                'error': "Noto'g'ri JSON formati!"
-            }, status=400)
-        
+        data = json.loads(request.body)
         username = data.get('username', '').strip()
         password = data.get('password', '').strip()
         
-        print(f"🔐 Login urinishi: {username}")
+        print(f"Login urinishi: {username}")
         
-        # Validatsiya
-        if not username or not password:
-            return JsonResponse({
-                'success': False, 
-                'error': "Iltimos, login va parolni kiriting!"
-            }, status=400)
-        
-        # ✅ DEMO ADMIN LOGIN - 100% ISHLAYDI
+        # Demo admin login
         if username == "admin" and password == "admin123":
-            print("✅ Demo admin login muvaffaqiyatli")
             request.session['is_admin'] = True
             request.session['admin_name'] = "Admin User"
             request.session['student_id'] = None
-            
-            # Session ni saqlash
-            request.session.save()
-            
             return JsonResponse({
                 'success': True, 
                 'message': "Admin sifatida muvaffaqiyatli kirdingiz!",
@@ -63,15 +35,12 @@ def student_login_credentials(request):
                 'redirect_url': '/admin-dashboard/'
             })
         
-        # ✅ STUDENT LOGIN - Database dan tekshirish
+        # Student login - Database dan tekshirish
         try:
-            print(f"🔍 Student login tekshirilmoqda: {username}")
             student_login = StudentLogin.objects.select_related('student').get(username=username)
             student = student_login.student
             
-            print(f"📝 Student topildi: {student.familya} {student.ism}")
-            
-            # Student bloklanganligini tekshirish
+            # Bloklanganligini tekshirish
             if student.locked_until and student.locked_until > timezone.now():
                 lock_time = student.locked_until - timezone.now()
                 minutes = int(lock_time.total_seconds() // 60) + 1
@@ -82,7 +51,6 @@ def student_login_credentials(request):
             
             # Parolni tekshirish
             if student_login.check_password(password):
-                print("✅ Student parol to'g'ri")
                 # Muvaffaqiyatli login
                 student.login_attempts = 0
                 student.locked_until = None
@@ -102,18 +70,16 @@ def student_login_credentials(request):
                     details='Login/parol orqali tizimga kirdi'
                 )
                 
-                print(f"🎉 Student login muvaffaqiyatli: {student.familya} {student.ism}")
-                
                 return JsonResponse({
                     'success': True, 
                     'message': f"Xush kelibsiz, {request.session['student_name']}!",
                     'is_admin': False,
                     'redirect_url': '/student-dashboard/',
-                    'student_name': request.session['student_name']
+                    'student_name': request.session['student_name'],
+                    'student_id': student.id
                 })
             else:
                 # Noto'g'ri parol
-                print("❌ Student parol noto'g'ri")
                 student.login_attempts += 1
                 
                 if student.login_attempts >= 3:
@@ -131,91 +97,49 @@ def student_login_credentials(request):
                     })
             
         except StudentLogin.DoesNotExist:
-            print("❌ Student login topilmadi")
             return JsonResponse({
                 'success': False, 
                 'error': "Login topilmadi! Iltimos, admin bilan bog'laning."
             })
-        
+            
     except Exception as e:
-        print(f"💥 Login xatosi: {str(e)}")
+        print(f"Login xatosi: {str(e)}")
         return JsonResponse({
             'success': False, 
-            'error': f"Server xatosi: {str(e)}"
+            'error': f"Xatolik: {str(e)}"
         })
 
 def admin_dashboard(request):
-    """Admin paneli"""
+    """Admin paneli - FAQAT ADMIN KIRA OLADI"""
     if not request.session.get('is_admin'):
         messages.error(request, "Iltimos, avval tizimga kiring")
         return redirect('index')
     
-    try:
-        students = Student.objects.all()
-        tests = Test.objects.all()
-        test_results = TestResult.objects.all()
-        
-        # O'rtacha ballarni hisoblash
-        avg_score = test_results.aggregate(avg=Avg('score'))['avg'] or 0
-        
-        context = {
-            'admin_name': request.session.get('admin_name', 'Admin'),
-            'students_count': students.count(),
-            'tests_count': tests.count(),
-            'active_tests_count': tests.filter(is_active=True).count(),
-            'completed_tests_count': test_results.count(),
-            'average_score': round(avg_score, 1),
-        }
-        return render(request, 'admin.html', context)
-    except Exception as e:
-        print(f"Admin dashboard error: {str(e)}")
-        messages.error(request, f"Ma'lumotlarni yuklashda xatolik: {str(e)}")
-        context = {
-            'admin_name': request.session.get('admin_name', 'Admin'),
-            'students_count': 0,
-            'tests_count': 0,
-            'active_tests_count': 0,
-            'completed_tests_count': 0,
-            'average_score': 0,
-        }
-        return render(request, 'admin.html', context)
+    # Statistik ma'lumotlar
+    students_count = Student.objects.count()
+    tests_count = Test.objects.count()
+    active_tests_count = Test.objects.filter(is_active=True).count()
+    completed_tests_count = TestResult.objects.count()
+    
+    context = {
+        'admin_name': request.session.get('admin_name', 'Admin'),
+        'students_count': students_count,
+        'tests_count': tests_count,
+        'active_tests_count': active_tests_count,
+        'completed_tests_count': completed_tests_count,
+    }
+    return render(request, 'admin_dashboard.html', context)
 
 def student_dashboard(request):
-    """Student paneli"""
+    """Student paneli - FAQAT STUDENT KIRA OLADI"""
     if not request.session.get('student_id'):
         messages.error(request, "Iltimos, avval tizimga kiring")
         return redirect('index')
     
-    try:
-        student_id = request.session['student_id']
-        student = get_object_or_404(Student, id=student_id)
-        
-        # FAQAT FAOL TESTLARNI OLISH
-        tests = Test.objects.filter(is_active=True).prefetch_related(
-            'questions',
-            'questions__answers'
-        ).order_by('-created_at')
-        
-        # Student natijalarini olish
-        student_results = TestResult.objects.filter(student=student).select_related('test').order_by('-completed_at')
-        
-        context = {
-            'student_name': request.session.get('student_name', 'Student'),
-            'student': student,
-            'tests': tests,
-            'student_results': student_results,
-        }
-        return render(request, 'student.html', context)
-        
-    except Exception as e:
-        print(f"Student dashboard error: {str(e)}")
-        messages.error(request, f"Ma'lumotlarni yuklashda xatolik: {str(e)}")
-        context = {
-            'student_name': request.session.get('student_name', 'Student'),
-            'tests': [],
-            'student_results': [],
-        }
-        return render(request, 'student.html', context)
+    context = {
+        'student_name': request.session.get('student_name', 'Student'),
+    }
+    return render(request, 'student_dashboard.html', context)
 
 def logout_view(request):
     """Chiqish"""
@@ -239,13 +163,13 @@ def logout_view(request):
     messages.success(request, "Tizimdan muvaffaqiyatli chiqdingiz")
     return redirect('index')
 
-# API Views - Admin uchun
+# ==================== ADMIN API FUNCTIONS ====================
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_test(request):
-    """Yangi test yaratish"""
+    """Yangi test yaratish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         data = json.loads(request.body)
@@ -280,17 +204,15 @@ def create_test(request):
             'message': f'"{test.title}" testi muvaffaqiyatli yaratildi!'
         })
         
-    except KeyError as e:
-        return JsonResponse({'success': False, 'error': f'Majburiy maydon yetishmayapti: {str(e)}'}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def create_student_with_login(request):
-    """Yangi o'quvchi va login yaratish - 100% ISHLAYDI"""
+    """Yangi o'quvchi yaratish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         data = json.loads(request.body)
@@ -302,14 +224,14 @@ def create_student_with_login(request):
                 return JsonResponse({
                     'success': False, 
                     'error': f"'{field}' maydoni to'ldirilishi shart!"
-                }, status=400)
+                })
         
         # Username bandligini tekshirish
         if StudentLogin.objects.filter(username=data['username']).exists():
             return JsonResponse({
                 'success': False, 
                 'error': "Bu login band! Boshqa login tanlang."
-            }, status=400)
+            })
         
         # Student yaratish
         student = Student.objects.create(
@@ -331,97 +253,64 @@ def create_student_with_login(request):
         return JsonResponse({
             'success': True, 
             'student_id': student.id,
-            'message': f"O'quvchi va login muvaffaqiyatli yaratildi! Login: {data['username']}"
+            'message': f"O'quvchi muvaffaqiyatli yaratildi! Login: {data['username']}"
         })
         
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_tests(request):
     """Testlar ro'yxatini olish"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+    if not request.session.get('is_admin') and not request.session.get('student_id'):
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
-    try:
-        tests = Test.objects.annotate(
-            questions_count=Count('questions')
-        ).values(
-            'id', 'title', 'description', 'time_limit', 'max_score', 'is_active', 'questions_count', 'created_at'
-        ).order_by('-created_at')
-        
-        return JsonResponse({'success': True, 'tests': list(tests)})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+    tests = Test.objects.annotate(
+        questions_count=Count('questions')
+    ).values(
+        'id', 'title', 'description', 'time_limit', 'max_score', 'is_active', 'questions_count', 'created_at'
+    ).order_by('-created_at')
+    
+    # Agar student bo'lsa, faqat faol testlarni ko'rsatish
+    if request.session.get('student_id'):
+        tests = tests.filter(is_active=True)
+    
+    return JsonResponse({'success': True, 'tests': list(tests)})
 
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_students(request):
-    """O'quvchilar ro'yxatini olish"""
+    """O'quvchilar ro'yxatini olish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
-    try:
-        students = Student.objects.all().values(
-            'id', 'ism', 'familya', 'group', 'is_online', 'login_attempts', 'created_at'
-        ).order_by('-created_at')
-        
-        return JsonResponse({'success': True, 'students': list(students)})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+    students = Student.objects.all().values(
+        'id', 'ism', 'familya', 'group', 'is_online', 'login_attempts', 'created_at'
+    ).order_by('-created_at')
+    
+    return JsonResponse({'success': True, 'students': list(students)})
 
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_results(request):
-    """Test natijalarini olish"""
+    """Natijalar ro'yxatini olish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
-    try:
-        results = TestResult.objects.select_related('student', 'test').all().values(
-            'id', 'student__ism', 'student__familya', 'test__title', 'score', 
-            'correct_answers', 'total_questions', 'completed_at'
-        ).order_by('-completed_at')
-        
-        return JsonResponse({'success': True, 'results': list(results)})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def get_ranking_admin(request):
-    """O'quvchilar reytingini olish (admin uchun)"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+    results = TestResult.objects.select_related('student', 'test').all().values(
+        'id', 'student__ism', 'student__familya', 'test__title', 'score', 
+        'correct_answers', 'total_questions', 'completed_at'
+    ).order_by('-completed_at')
     
-    try:
-        # Faqat test topshirgan o'quvchilarni olish
-        ranking = Student.objects.annotate(
-            avg_score=Avg('testresult__score'),
-            tests_taken=Count('testresult')
-        ).filter(tests_taken__gt=0).order_by('-avg_score')
-        
-        ranking_data = []
-        for student in ranking:
-            ranking_data.append({
-                'id': student.id,
-                'ism': student.ism,
-                'familya': student.familya,
-                'avg_score': float(student.avg_score or 0),
-                'tests_taken': student.tests_taken
-            })
-        
-        return JsonResponse({'success': True, 'ranking': ranking_data})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+    return JsonResponse({'success': True, 'results': list(results)})
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_student(request, student_id):
-    """O'quvchini o'chirish"""
+    """O'quvchini o'chirish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         student = get_object_or_404(Student, id=student_id)
@@ -432,148 +321,45 @@ def delete_student(request, student_id):
         
         return JsonResponse({'success': True, 'message': 'O\'quvchi muvaffaqiyatli o\'chirildi'})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_test(request, test_id):
-    """Testni o'chirish"""
+    """Testni o'chirish - FAQAT ADMIN"""
     if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         test = get_object_or_404(Test, id=test_id)
         test.delete()
         return JsonResponse({'success': True, 'message': 'Test muvaffaqiyatli o\'chirildi'})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
-@csrf_exempt
-@require_http_methods(["PUT"])
-def update_student(request, student_id):
-    """O'quvchi ma'lumotlarini yangilash"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        data = json.loads(request.body)
-        student = get_object_or_404(Student, id=student_id)
-        
-        student.familya = data.get('familya', student.familya)
-        student.ism = data.get('ism', student.ism)
-        student.group = data.get('group', student.group)
-        student.save()
-        
-        # Login ma'lumotlarini yangilash
-        if 'username' in data:
-            student_login, created = StudentLogin.objects.get_or_create(student=student)
-            student_login.username = data['username']
-            
-            if 'password' in data and data['password']:
-                student_login.set_password(data['password'])
-            
-            student_login.save()
-        
-        return JsonResponse({'success': True, 'message': 'O\'quvchi ma\'lumotlari yangilandi'})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
-@csrf_exempt
-@require_http_methods(["PUT"])
-def update_test(request, test_id):
-    """Test ma'lumotlarini yangilash"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        data = json.loads(request.body)
-        test = get_object_or_404(Test, id=test_id)
-        
-        test.title = data.get('title', test.title)
-        test.description = data.get('description', test.description)
-        test.time_limit = data.get('time_limit', test.time_limit)
-        test.max_score = data.get('max_score', test.max_score)
-        test.is_active = data.get('is_active', test.is_active)
-        test.save()
-        
-        return JsonResponse({'success': True, 'message': 'Test ma\'lumotlari yangilandi'})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def get_student(request, student_id):
-    """Bitta o'quvchi ma'lumotlarini olish"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        student = get_object_or_404(Student, id=student_id)
-        student_login = StudentLogin.objects.filter(student=student).first()
-        
-        student_data = {
-            'id': student.id,
-            'ism': student.ism,
-            'familya': student.familya,
-            'group': student.group,
-            'is_online': student.is_online,
-            'username': student_login.username if student_login else ''
-        }
-        
-        return JsonResponse({'success': True, 'student': student_data})
-    except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
+# ==================== STUDENT API FUNCTIONS ====================
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_test(request, test_id):
-    """Bitta test ma'lumotlarini olish"""
-    if not request.session.get('is_admin'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+def get_student_results(request):
+    """O'quvchi natijalarini olish - FAQAT STUDENT"""
+    if not request.session.get('student_id'):
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
-    try:
-        test = get_object_or_404(Test, id=test_id)
-        
-        test_data = {
-            'id': test.id,
-            'title': test.title,
-            'description': test.description,
-            'time_limit': test.time_limit,
-            'max_score': test.max_score,
-            'is_active': test.is_active,
-            'questions': []
-        }
-        
-        # Savollarni olish
-        for question in test.questions.all().prefetch_related('answers'):
-            question_data = {
-                'id': question.id,
-                'text': question.text,
-                'order': question.order,
-                'answers': []
-            }
-            
-            # Javoblarni olish
-            for answer in question.answers.all():
-                question_data['answers'].append({
-                    'id': answer.id,
-                    'text': answer.text,
-                    'is_correct': answer.is_correct
-                })
-            
-            test_data['questions'].append(question_data)
-        
-        return JsonResponse({'success': True, 'test': test_data})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+    student_id = request.session['student_id']
+    student = get_object_or_404(Student, id=student_id)
+    
+    results = TestResult.objects.filter(student=student).select_related('test').values(
+        'id', 'test__title', 'score', 'correct_answers', 'total_questions', 'completed_at'
+    ).order_by('-completed_at')
+    
+    return JsonResponse({'success': True, 'results': list(results)})
 
-# Student API Views
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_test_questions(request, test_id):
-    """Test savollarini o'quvchi uchun olish (to'g'ri javoblarsiz)"""
+    """Test savollarini olish - FAQAT STUDENT"""
     if not request.session.get('student_id'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         test = get_object_or_404(Test, id=test_id, is_active=True)
@@ -603,14 +389,14 @@ def get_test_questions(request, test_id):
             'time_limit': test.time_limit
         })
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def submit_test(request):
-    """Test natijasini yuborish"""
+    """Test natijasini yuborish - FAQAT STUDENT"""
     if not request.session.get('student_id'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         data = json.loads(request.body)
@@ -661,49 +447,44 @@ def submit_test(request):
             'total_questions': total_questions,
             'message': f'Test muvaffaqiyatli yakunlandi! Siz {score:.1f} ball to\'pladingiz.'
         })
-    except KeyError as e:
-        return JsonResponse({'success': False, 'error': f'Majburiy maydon yetishmayapti: {str(e)}'}, status=400)
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=400)
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def set_admin_session(request):
-    """Demo admin uchun session o'rnatish"""
-    try:
-        data = json.loads(request.body)
-        request.session['is_admin'] = data.get('is_admin', False)
-        request.session['admin_name'] = data.get('admin_name', 'Admin')
-        return JsonResponse({'success': True})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-# Qo'shimcha funksiyalar
+# ==================== RANKING FUNCTIONS ====================
 @csrf_exempt
 @require_http_methods(["GET"])
-def get_student_results(request):
-    """O'quvchining o'z natijalarini olish"""
-    if not request.session.get('student_id'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+def get_ranking_admin(request):
+    """Reyting ro'yxatini olish - FAQAT ADMIN"""
+    if not request.session.get('is_admin'):
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
-        student_id = request.session['student_id']
-        student = get_object_or_404(Student, id=student_id)
+        # Faqat test topshirgan o'quvchilarni olish
+        ranking = Student.objects.annotate(
+            avg_score=Avg('testresult__score'),
+            tests_taken=Count('testresult')
+        ).filter(tests_taken__gt=0).order_by('-avg_score')
         
-        results = TestResult.objects.filter(student=student).select_related('test').values(
-            'id', 'test__title', 'score', 'correct_answers', 'total_questions', 'completed_at'
-        ).order_by('-completed_at')
+        ranking_data = []
+        for student in ranking:
+            ranking_data.append({
+                'id': student.id,
+                'ism': student.ism,
+                'familya': student.familya,
+                'avg_score': float(student.avg_score or 0),
+                'tests_taken': student.tests_taken
+            })
         
-        return JsonResponse({'success': True, 'results': list(results)})
+        return JsonResponse({'success': True, 'ranking': ranking_data})
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
 @csrf_exempt
 @require_http_methods(["GET"])
 def get_student_ranking(request):
-    """O'quvchilar reytingini olish (o'quvchi uchun)"""
+    """O'quvchi reytingini olish - FAQAT STUDENT"""
     if not request.session.get('student_id'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
+        return JsonResponse({'success': False, 'error': 'Ruxsat etilmagan!'})
     
     try:
         # Faqat test topshirgan o'quvchilarni olish
@@ -744,40 +525,9 @@ def get_student_ranking(request):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-@csrf_exempt
-@require_http_methods(["GET"])
-def get_student_activity(request):
-    """O'quvchi faoliyatini olish"""
-    if not request.session.get('student_id'):
-        return JsonResponse({'success': False, 'error': 'Unauthorized'}, status=401)
-    
-    try:
-        student_id = request.session['student_id']
-        student = get_object_or_404(Student, id=student_id)
-        
-        activities = StudentActivity.objects.filter(student=student).values(
-            'activity_type', 'details', 'created_at'
-        ).order_by('-created_at')[:10]
-        
-        return JsonResponse({'success': True, 'activities': list(activities)})
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
-
-# Xatolik qaytarish uchun handler
+# Xatolik handlerlari
 def handler404(request, exception):
-    """404 xatolik sahifasi"""
     return render(request, '404.html', status=404)
 
 def handler500(request):
-    """500 xatolik sahifasi"""
     return render(request, '500.html', status=500)
-
-# Health check
-@require_http_methods(["GET"])
-def health_check(request):
-    """Tizim holatini tekshirish"""
-    return JsonResponse({
-        'status': 'healthy',
-        'timestamp': timezone.now().isoformat(),
-        'version': '1.0.0'
-    })
