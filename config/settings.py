@@ -9,8 +9,18 @@ SECRET_KEY = 'django-insecure-master-test-platform-secret-key-2024-master-vnjv'
 
 DEBUG = True
 
-# Lokal rivojlantirish uchun barcha hostlarga ruxsat
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+# ALLOWED_HOSTS ni to'g'ri sozlang
+ALLOWED_HOSTS = [
+    '127.0.0.1', 
+    'localhost',
+    'master-0se1.onrender.com',  # Render host nomini qo'shing
+    '.onrender.com',  # Barcha render subdomainlari uchun
+]
+
+# Yoki environment variable orqali (tavsiya etiladi)
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -80,19 +90,33 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# WhiteNoise sozlamalari
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # Media fayllar
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# SSL bilan bog'liq sozlamalar lokal rivojlantirish uchun
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
-SECURE_SSL_REDIRECT = False
+# SSL bilan bog'liq sozlamalar
+SESSION_COOKIE_SECURE = True  # Production uchun True qiling
+CSRF_COOKIE_SECURE = True     # Production uchun True qiling
+SECURE_SSL_REDIRECT = False   # Agar reverse proxy ishlatmasangiz False qoling
 
-# CSRF Trusted Origins
+# CSRF Trusted Origins - Render uchun qo'shing
 CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:8000',
     'http://localhost:8000',
+    'https://master-0se1.onrender.com',  # Render uchun HTTPS qo'shing
+    'https://*.onrender.com',  # Barcha render domainlari uchun
 ]
+
+# Database URL mavjud bo'lsa (Production uchun)
+if os.environ.get('DATABASE_URL'):
+    import dj_database_url
+    DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=True)
+
+# Production uchun secret key
+if not DEBUG:
+    SECRET_KEY = os.environ.get('SECRET_KEY', SECRET_KEY)
